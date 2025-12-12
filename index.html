@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的雲端記帳本</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; text-align: center; }
+        button { padding: 10px 20px; font-size: 1.2em; cursor: pointer; }
+        #user-info { margin-top: 20px; color: green; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>💰 個人記帳本 (測試中)</h1>
+    
+    <div id="login-area">
+        <button id="btn-login">Google 登入</button>
+    </div>
+
+    <div id="app-area" style="display: none;">
+        <p id="user-info"></p>
+        <button id="btn-logout">登出</button>
+        <hr>
+        <p>Firebase 連線狀態：<span id="db-status">檢查中...</span></p>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+</body>
+</html>
