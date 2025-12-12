@@ -1,17 +1,16 @@
-const CACHE_NAME = 'pocket-ledger-v1';
+const CACHE_NAME = 'pocket-ledger-v99'; // 版本號改大一點，強迫更新
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  // 如果您有上傳 icon.png 就解開下面這行
-  // './icon.png' 
+  // './icon.png' // 有圖再開
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
   );
-  self.skipWaiting();
+  self.skipWaiting(); // 強制接管
 });
 
 self.addEventListener('activate', (event) => {
@@ -22,21 +21,16 @@ self.addEventListener('activate', (event) => {
       })
     ))
   );
-  self.clients.claim();
+  self.clients.claim(); // 強制接管
 });
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-
-  // ⚠️ 關鍵：如果是 Firebase 或 Google API 的請求，直接走網路，不要快取！
-  // 這樣才能確保資料庫讀到最新的
+  // 不快取 Firebase 相關請求，確保資料最新
   if (url.hostname.includes('firebase') || 
-      url.hostname.includes('googleapis') || 
-      url.hostname.includes('google')) {
-    return; 
+      url.hostname.includes('googleapis')) {
+    return;
   }
-
-  // 其他靜態檔案 (HTML, JS, CSS) 走快取優先
   event.respondWith(
     caches.match(event.request).then(response => response || fetch(event.request))
   );
