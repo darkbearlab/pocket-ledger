@@ -5,140 +5,54 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>雲端記帳本 v2</title>
     <style>
-        :root {
-            --primary: #007AFF;
-            --bg: #F2F2F7;
-            --card-bg: #FFFFFF;
-            --text-main: #000000;
-            --text-sub: #8E8E93;
-            --income: #34C759;
-            --expense: #FF3B30;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg);
-            color: var(--text-main);
-            margin: 0;
-            padding: 0;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        /* --- 登入畫面 --- */
-        #login-area {
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            height: 100%; padding: 20px; background: var(--bg);
-            z-index: 1000; position: absolute; width: 100%; top: 0; left: 0;
-        }
-        .login-card {
-            background: white; padding: 40px; border-radius: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 80%; max-width: 300px; text-align: center;
-        }
-
-        /* --- 主應用容器 --- */
-        #app-container { display: none; flex-direction: column; height: 100%; }
-
-        header {
-            background: var(--card-bg); padding: 15px 20px; padding-top: env(safe-area-inset-top, 20px);
-            display: flex; justify-content: space-between; align-items: center;
-            box-shadow: 0 1px 0 rgba(0,0,0,0.05); z-index: 10;
-        }
-        h1 { margin: 0; font-size: 18px; font-weight: 600; }
-        .logout-btn { background: none; border: none; color: var(--primary); font-size: 14px; cursor: pointer; }
-
-        #scroll-area { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 100px; }
-
-        .balance-card {
-            background: var(--card-bg); border-radius: 16px; padding: 25px; text-align: center;
-            margin-bottom: 25px; box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-        }
-        .balance-amount { font-size: 40px; font-weight: 700; margin-top: 5px;}
-
-        .filter-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        input[type="month"] { border: none; background: transparent; font-size: 16px; color: var(--primary); font-weight: 600; }
-
-        /* --- 列表樣式 (有重大調整) --- */
-        .txn-list { list-style: none; padding: 0; margin: 0; }
-        .txn-item {
-            background: var(--card-bg);
-            padding: 15px; margin-bottom: 12px; border-radius: 12px;
-            display: flex; align-items: center; /* 垂直置中 */
-            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-            cursor: pointer; /* 讓它看起來可以點 */
-            transition: background 0.2s;
-        }
-        .txn-item:active { background: #f0f0f0; } /* 點擊回饋 */
-
-        /* 新增一個包裹器，撐開空間 */
-        .txn-content-wrapper {
-            flex: 1; /* 佔滿剩餘空間，把刪除按鈕擠到右邊 */
-            display: flex; justify-content: space-between; align-items: center;
-            margin-right: 15px; /* 跟刪除按鈕保持距離 */
-        }
-
-        .txn-info strong { display: block; font-size: 16px; margin-bottom: 4px; }
-        .txn-info span { font-size: 12px; color: var(--text-sub); }
-        .txn-amount { font-size: 18px; font-weight: 600; white-space: nowrap; }
-        .income { color: var(--income); }
-        .expense { color: var(--text-main); }
+        /* --- 樣式設定 (保持極簡風) --- */
+        :root { --primary: #007AFF; --bg: #F2F2F7; --card-bg: #FFFFFF; --text-main: #000; --text-sub: #8E8E93; --income: #34C759; --expense: #FF3B30; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text-main); margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         
-        /* 刪除按鈕樣式調整 */
-        .delete-btn {
-            background: #ff3b301a; color: #ff3b30; border: none;
-            width: 28px; height: 28px; border-radius: 14px; /* 稍微大一點點 */
-            font-size: 14px; cursor: pointer;
-            display: flex; justify-content: center; align-items: center;
-            padding: 0; /* 確保符號置中 */
-        }
-
-        /* --- 懸浮按鈕 (FAB) 修正置中 --- */
-        .fab {
-            position: fixed; bottom: 30px; right: 30px;
-            width: 56px; height: 56px; border-radius: 50%;
-            background-color: var(--primary); color: white; border: none;
-            font-size: 32px; /* 字體調大一點 */
-            box-shadow: 0 4px 15px rgba(0,122,255,0.4); cursor: pointer; z-index: 50;
-            /* 關鍵置中語法 */
-            display: flex; justify-content: center; align-items: center;
-            padding: 0; line-height: 1; 
-            padding-bottom: 4px; /* 微調：因為 + 號字體特性通常偏上，稍微往下壓一點視覺才平衡 */
-        }
-
-        /* --- Modal 彈窗 --- */
-        #modal-overlay {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); z-index: 200;
-            align-items: flex-end;
-        }
-        .modal-card {
-            background: var(--card-bg); width: 100%; border-radius: 20px 20px 0 0;
-            padding: 25px; box-sizing: border-box; animation: slideUp 0.3s ease-out;
-        }
-        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-
-        .form-row { margin-bottom: 15px; }
-        input, select {
-            width: 100%; padding: 12px; border-radius: 10px;
-            border: 1px solid #eee; background: #f9f9f9;
-            font-size: 16px; box-sizing: border-box; outline: none;
-        }
-        .btn-group { display: flex; gap: 10px; margin-top: 20px; }
-        .btn { flex: 1; padding: 14px; border-radius: 10px; border: none; font-size: 16px; font-weight: 600; }
-        .btn-save { background: var(--primary); color: white; }
-        .btn-cancel { background: #eee; color: #333; }
-
+        /* 登入與主畫面切換 */
+        #login-area { position: absolute; top:0; left:0; width:100%; height:100%; background:var(--bg); z-index:1000; display:flex; justify-content:center; align-items:center; }
+        #app-container { display:none; flex-direction:column; height:100%; }
+        
+        /* 元件樣式 */
+        .login-card { background:white; padding:40px; border-radius:20px; box-shadow:0 10px 30px rgba(0,0,0,0.1); text-align:center; width:80%; max-width:300px; }
+        header { background:var(--card-bg); padding:15px 20px; padding-top:env(safe-area-inset-top, 20px); display:flex; justify-content:space-between; align-items:center; box-shadow:0 1px 0 rgba(0,0,0,0.05); }
+        h1 { margin:0; font-size:18px; }
+        .logout-btn { border:none; background:none; color:var(--primary); font-size:14px; }
+        
+        #scroll-area { flex:1; overflow-y:auto; padding:20px; padding-bottom:100px; }
+        
+        .balance-card { background:var(--card-bg); border-radius:16px; padding:25px; text-align:center; margin-bottom:25px; }
+        .balance-amount { font-size:40px; font-weight:700; margin-top:5px; }
+        
+        .txn-item { background:var(--card-bg); padding:15px; margin-bottom:10px; border-radius:12px; display:flex; align-items:center; cursor:pointer; transition:0.2s; }
+        .txn-item:active { background:#e5e5e5; transform:scale(0.98); }
+        .txn-content { flex:1; display:flex; justify-content:space-between; align-items:center; margin-right:15px; }
+        .txn-amount { font-size:18px; font-weight:600; }
+        .income { color:var(--income); } .expense { color:var(--text-main); }
+        
+        .delete-btn { background:#ff3b3020; color:var(--expense); border:none; width:30px; height:30px; border-radius:15px; display:flex; justify-content:center; align-items:center; font-size:14px; }
+        
+        /* 懸浮按鈕 */
+        .fab { position:fixed; bottom:30px; right:30px; width:56px; height:56px; border-radius:50%; background:var(--primary); color:white; border:none; font-size:32px; box-shadow:0 4px 15px rgba(0,122,255,0.4); display:flex; justify-content:center; align-items:center; padding-bottom:4px; z-index:100; }
+        
+        /* 彈出視窗 */
+        #modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:200; align-items:flex-end; backdrop-filter:blur(2px); }
+        .modal-card { background:var(--card-bg); width:100%; border-radius:20px 20px 0 0; padding:25px; padding-bottom:50px; animation:slideUp 0.3s; }
+        @keyframes slideUp { from { transform:translateY(100%); } to { transform:translateY(0); } }
+        
+        input, select { width:100%; padding:12px; border-radius:10px; border:1px solid #eee; background:#f9f9f9; font-size:16px; box-sizing:border-box; margin-bottom:15px; }
+        .btn-group { display:flex; gap:10px; margin-top:10px; }
+        .btn { flex:1; padding:14px; border-radius:10px; border:none; font-size:16px; font-weight:600; }
+        .btn-primary { background:var(--primary); color:white; }
+        .btn-cancel { background:#eee; color:#333; }
     </style>
 </head>
 <body>
 
     <div id="login-area">
         <div class="login-card">
-            <h2>☁️ 雲端記帳 v2</h2>
-            <p style="color:#888; margin-bottom:30px">請登入以開始使用</p>
-            <button id="btn-login" class="btn btn-save" style="width:100%">Google 登入</button>
+            <h2>☁️ 記帳本 v2</h2>
+            <button id="btn-login" class="btn btn-primary" style="width:100%">Google 登入</button>
         </div>
     </div>
 
@@ -150,14 +64,16 @@
 
         <div id="scroll-area">
             <div class="balance-card">
-                <div style="font-size:14px; color:#888; margin-bottom:5px;">本月結餘</div>
+                <div style="color:#888; font-size:14px; margin-bottom:5px">本月結餘</div>
                 <div class="balance-amount" id="total-balance">$0</div>
             </div>
-            <div class="filter-section">
-                <h3>近期紀錄</h3>
+
+            <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
+                <h3 style="margin:0; color:#888;">近期紀錄</h3>
                 <input type="month" id="filter-month">
             </div>
-            <ul class="txn-list" id="txn-list">
+
+            <ul id="txn-list" style="list-style:none; padding:0;">
                 <li style="text-align:center; color:#ccc; margin-top:20px;">載入中...</li>
             </ul>
         </div>
@@ -168,18 +84,19 @@
     <div id="modal-overlay">
         <div class="modal-card">
             <h2 id="modal-title" style="margin:0 0 20px 0;">記一筆</h2>
-            <div class="form-row">
-                <select id="inp-type">
-                    <option value="expense">💸 支出</option>
-                    <option value="income">💰 收入</option>
-                </select>
-            </div>
-            <div class="form-row"><input type="date" id="inp-date"></div>
-            <div class="form-row"><input type="text" id="inp-title" placeholder="項目名稱"></div>
-            <div class="form-row"><input type="number" id="inp-amount" placeholder="金額"></div>
+            
+            <select id="inp-type">
+                <option value="expense">💸 支出</option>
+                <option value="income">💰 收入</option>
+            </select>
+            
+            <input type="date" id="inp-date">
+            <input type="text" id="inp-title" placeholder="項目名稱 (如: 午餐)">
+            <input type="number" id="inp-amount" placeholder="金額">
+
             <div class="btn-group">
                 <button class="btn btn-cancel" id="btn-close-modal">取消</button>
-                <button class="btn btn-save" id="btn-save-txn">儲存</button>
+                <button class="btn btn-primary" id="btn-save-txn">儲存</button>
             </div>
         </div>
     </div>
