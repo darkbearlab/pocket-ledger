@@ -4,7 +4,7 @@ import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChang
 import { getFirestore, collection, addDoc, query, where, orderBy, onSnapshot, deleteDoc, doc, Timestamp } 
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// ⚠️ 請換成您的 Config
+// ⚠️ 您的設定檔
 const firebaseConfig = {
   apiKey: "AIzaSyAGtak9bLhVXR7oJDKr3R1ZM6OdL6JyI8A",
   authDomain: "my-pocket-ledger.firebaseapp.com",
@@ -20,9 +20,9 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
-// UI 變數
+// DOM 元素
 const loginArea = document.getElementById('login-area');
-const appArea = document.getElementById('app-area');
+const appContainer = document.getElementById('app-container'); // 變更
 const userInfo = document.getElementById('user-info');
 const inpType = document.getElementById('inp-type');
 const inpDate = document.getElementById('inp-date');
@@ -33,140 +33,135 @@ const totalBalanceEl = document.getElementById('total-balance');
 const filterMonth = document.getElementById('filter-month');
 
 let currentUser = null;
-let unsubscribeList = null; // 用來停止監聽資料庫
+let unsubscribeList = null;
 
-// 1. 初始化日期 (預設今天 / 本月)
+// 初始化
 const today = new Date();
-inpDate.valueAsDate = today; // 設定表單預設為今天
-filterMonth.value = today.toISOString().slice(0, 7); // 設定列表預設為本月 (YYYY-MM)
+filterMonth.value = today.toISOString().slice(0, 7);
 
-// --- 登入/登出邏輯 (不變) ---
-document.getElementById('btn-login').addEventListener('click', () => signInWithPopup(auth, provider));
-document.getElementById('btn-logout').addEventListener('click', () => signOut(auth));
+// 登入
+document.getElementById('btn-login').addEventListener('click', () => {
+    signInWithPopup(auth, provider).catch(err => alert(err.message));
+});
 
+// 登出 (掛在 window 上給 HTML 用)
+window.doLogout = () => signOut(auth);
+
+// 監聽狀態
 onAuthStateChanged(auth, (user) => {
     currentUser = user;
     if (user) {
         loginArea.style.display = 'none';
-        appArea.style.display = 'block';
-        userInfo.innerText = `帳戶: ${user.email}`;
-        
-        // 登入後，馬上載入這個月的資料
+        appContainer.style.display = 'flex'; // Flex layout
+        userInfo.innerText = user.email.split('@')[0]; // 只顯示 @ 前面的名字比較短
         loadTransactions(filterMonth.value);
     } else {
-        loginArea.style.display = 'block';
-        appArea.style.display = 'none';
-        if (unsubscribeList) unsubscribeList(); // 登出時停止監聽
+        loginArea.style.display = 'flex';
+        appContainer.style.display = 'none';
+        if (unsubscribeList) unsubscribeList();
     }
 });
 
-// --- 功能 A: 新增交易 (INSERT) ---
+// 新增交易
 document.getElementById('btn-add').addEventListener('click', async () => {
     const title = inpTitle.value;
     const amount = parseFloat(inpAmount.value);
-    const dateStr = inpDate.value; // YYYY-MM-DD
+    const dateStr = inpDate.value;
     const type = inpType.value;
 
-    if (!title || !amount || !dateStr) {
-        alert("請填寫完整資料！");
-        return;
-    }
+    if (!title || !amount || !dateStr) return alert("請填寫完整");
 
     try {
-        // 寫入 Firestore
-        // 對應 SQL: INSERT INTO transactions (uid, title, amount, type, date) VALUES (...)
         await addDoc(collection(db, "transactions"), {
-            uid: currentUser.uid, // 重要！標記這筆資料是誰的
-            title: title,
-            amount: amount,
-            type: type,
-            date: Timestamp.fromDate(new Date(dateStr)) // 轉成 Firestore 專用時間格式
+            uid: currentUser.uid,
+            title, amount, type,
+            date: Timestamp.fromDate(new Date(dateStr))
         });
-
-        // 清空輸入框
+        
+        // 成功後關閉視窗並清空
+        window.closeModal(); // 呼叫 HTML 裡的函式
         inpTitle.value = '';
         inpAmount.value = '';
-        alert("記帳成功！");
     } catch (e) {
-        console.error("寫入錯誤", e);
         alert("錯誤: " + e.message);
     }
 });
 
-// --- 功能 B: 切換月份時重新查詢 ---
-filterMonth.addEventListener('change', (e) => {
-    loadTransactions(e.target.value);
-});
+// 切換月份
+filterMonth.addEventListener('change', (e) => loadTransactions(e.target.value));
 
-// --- 功能 C: 讀取並監聽資料 (SELECT WHERE... ORDER BY...) ---
+// 讀取資料
 function loadTransactions(monthStr) {
-    // monthStr 格式是 "2023-12"
     if (!currentUser) return;
     
-    // 1. 計算該月的「第一天」和「最後一天」
-    // 用來做 WHERE date >= Start AND date <= End
     const startDate = new Date(monthStr + "-01");
     const endDate = new Date(monthStr + "-01");
-    endDate.setMonth(endDate.getMonth() + 1); // 下個月的1號，用來當界線
+    endDate.setMonth(endDate.getMonth() + 1);
 
-    // 2. 建立查詢 Query
     const q = query(
         collection(db, "transactions"),
-        where("uid", "==", currentUser.uid), // 只抓自己的
+        where("uid", "==", currentUser.uid),
         where("date", ">=", Timestamp.fromDate(startDate)),
-        where("date", "<", Timestamp.fromDate(endDate)), // 小於下個月1號 = 這個月月底
-        orderBy("date", "desc") // 按日期倒序 (最新的在上面)
+        where("date", "<", Timestamp.fromDate(endDate)),
+        orderBy("date", "desc")
     );
 
-    // 3. 停止上一次的監聽 (避免重複監聽浪費流量)
     if (unsubscribeList) unsubscribeList();
 
-    // 4. 開始即時監聽 (onSnapshot)
-    // 這比 SQL 強的地方：資料庫一變，這裡馬上自動執行，不用手動 reload
     unsubscribeList = onSnapshot(q, (snapshot) => {
-        txnList.innerHTML = ""; // 清空列表
+        txnList.innerHTML = "";
         let total = 0;
+
+        if(snapshot.empty) {
+            txnList.innerHTML = '<li style="text-align:center; color:#ccc; padding:20px;">本月尚無紀錄</li>';
+            totalBalanceEl.innerText = "$0";
+            return;
+        }
 
         snapshot.forEach((doc) => {
             const data = doc.data();
-            const date = data.date.toDate().toLocaleDateString();
+            const dateObj = data.date.toDate();
+            // 格式化日期： 12/05
+            const dateDisplay = `${dateObj.getMonth()+1}/${dateObj.getDate()}`;
             
-            // 計算結餘
             if (data.type === 'income') total += data.amount;
             else total -= data.amount;
 
-            // 渲染 HTML
             const li = document.createElement('li');
             li.className = 'txn-item';
             
-            // 判斷顏色 class
-            const colorClass = data.type === 'income' ? 'income' : 'expense';
-            const sign = data.type === 'income' ? '+' : '-';
+            const isIncome = data.type === 'income';
+            const amountClass = isIncome ? 'income' : 'expense';
+            const sign = isIncome ? '+' : '-';
 
             li.innerHTML = `
-                <div>
-                    <span style="color:#888; font-size:0.8em;">${date}</span><br>
+                <div class="txn-info">
                     <strong>${data.title}</strong>
+                    <span>${dateDisplay}</span>
                 </div>
-                <div class="${colorClass}">
-                    ${sign}$${data.amount}
-                    <button class="delete-btn" onclick="window.deleteItem('${doc.id}')">x</button>
+                <div style="display:flex; align-items:center;">
+                    <div class="txn-amount ${amountClass}">
+                        ${sign}$${data.amount}
+                    </div>
+                    <button class="delete-btn" onclick="window.deleteItem('${doc.id}')">✕</button>
                 </div>
             `;
             txnList.appendChild(li);
         });
 
-        // 更新總結餘
-        totalBalanceEl.innerText = `本月結餘: $${total}`;
-        if(total < 0) totalBalanceEl.style.color = 'red';
-        else totalBalanceEl.style.color = 'black';
+        totalBalanceEl.innerText = `$${total}`;
+        totalBalanceEl.style.color = total >= 0 ? '#000' : '#ff3b30'; // 負數變紅
     });
 }
 
-// --- 功能 D: 刪除 (DELETE) ---
-// 把這個函式掛到 window 上，這樣 HTML 裡的 onclick 才能呼叫到
+// 刪除
 window.deleteItem = async (docId) => {
-    if (confirm("確定要刪除這筆嗎？")) {
+    if (confirm("刪除這筆紀錄？")) {
         await deleteDoc(doc(db, "transactions", docId));
     }
 };
+
+// 註冊 Service Worker
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js');
+}
