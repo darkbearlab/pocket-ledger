@@ -15,6 +15,52 @@
         .expense { color: red; font-weight: bold; }
         #total-balance { font-size: 1.5em; text-align: center; margin: 20px 0; }
     </style>
+    <style>
+    #debug-console {
+        position: fixed;
+        top: 0; left: 0; width: 100%;
+        height: 150px;
+        background: rgba(0,0,0,0.8);
+        color: #fff;
+        font-family: monospace;
+        font-size: 12px;
+        overflow-y: scroll;
+        z-index: 9999;
+        pointer-events: none; /* 讓點擊可以穿透 */
+        padding: 5px;
+        border-bottom: 2px solid red;
+    }
+</style>
+<script>
+    // 建立一個顯示錯誤的視窗
+    const debugDiv = document.createElement('div');
+    debugDiv.id = 'debug-console';
+    document.documentElement.appendChild(debugDiv);
+
+    function logToScreen(msg, color) {
+        const p = document.createElement('div');
+        p.style.color = color || 'white';
+        p.innerText = '> ' + msg;
+        debugDiv.prepend(p); // 最新的訊息在最上面
+    }
+
+    // 1. 攔截一般 JS 錯誤
+    window.onerror = function (message, source, lineno, colno, error) {
+        logToScreen(`[ERROR] ${message} (${lineno}:${colno})`, '#ff4444');
+    };
+
+    // 2. 攔截 Promise 錯誤 (這就是 Firebase 最常發生的非同步錯誤)
+    window.addEventListener('unhandledrejection', function(event) {
+        logToScreen(`[PROMISE] ${event.reason}`, '#ff8800');
+    });
+
+    // 3. 也可以攔截一般的 console.log (選用)
+    const oldLog = console.log;
+    console.log = function(...args) {
+        oldLog.apply(console, args);
+        logToScreen(args.join(' '), '#ccffcc');
+    };
+</script>
 </head>
 <body>
     <h2 style="text-align: center;">💰 個人記帳本</h2>
