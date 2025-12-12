@@ -4,7 +4,7 @@ import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChang
 import { getFirestore, collection, addDoc, query, where, orderBy, onSnapshot, deleteDoc, doc, Timestamp } 
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// ⚠️ 您的設定檔
+// ⚠️ 請換成您的 Config
 const firebaseConfig = {
   apiKey: "AIzaSyAGtak9bLhVXR7oJDKr3R1ZM6OdL6JyI8A",
   authDomain: "my-pocket-ledger.firebaseapp.com",
@@ -20,9 +20,9 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
-// DOM 元素
+// UI 變數
 const loginArea = document.getElementById('login-area');
-const appContainer = document.getElementById('app-container'); // 變更
+const appArea = document.getElementById('app-area');
 const userInfo = document.getElementById('user-info');
 const inpType = document.getElementById('inp-type');
 const inpDate = document.getElementById('inp-date');
@@ -35,62 +35,68 @@ const filterMonth = document.getElementById('filter-month');
 let currentUser = null;
 let unsubscribeList = null;
 
-// 初始化
+// 初始化日期
 const today = new Date();
+inpDate.valueAsDate = today;
 filterMonth.value = today.toISOString().slice(0, 7);
 
-// 登入
+// --- 登入/登出 ---
 document.getElementById('btn-login').addEventListener('click', () => {
-    signInWithPopup(auth, provider).catch(err => alert(err.message));
+    signInWithPopup(auth, provider).catch(err => alert("登入錯誤: " + err.message));
 });
 
-// 登出 (掛在 window 上給 HTML 用)
-window.doLogout = () => signOut(auth);
+document.getElementById('btn-logout').addEventListener('click', () => {
+    signOut(auth).then(() => alert("已登出"));
+});
 
-// 監聽狀態
+// --- 監聽狀態 ---
 onAuthStateChanged(auth, (user) => {
     currentUser = user;
     if (user) {
         loginArea.style.display = 'none';
-        appContainer.style.display = 'flex'; // Flex layout
-        userInfo.innerText = user.email.split('@')[0]; // 只顯示 @ 前面的名字比較短
+        appArea.style.display = 'block';
+        userInfo.innerText = `帳戶: ${user.email}`;
         loadTransactions(filterMonth.value);
     } else {
-        loginArea.style.display = 'flex';
-        appContainer.style.display = 'none';
+        loginArea.style.display = 'block';
+        appArea.style.display = 'none';
         if (unsubscribeList) unsubscribeList();
     }
 });
 
-// 新增交易
+// --- 新增 ---
 document.getElementById('btn-add').addEventListener('click', async () => {
     const title = inpTitle.value;
     const amount = parseFloat(inpAmount.value);
     const dateStr = inpDate.value;
     const type = inpType.value;
 
-    if (!title || !amount || !dateStr) return alert("請填寫完整");
+    if (!title || !amount || !dateStr) {
+        alert("請填寫完整資料！");
+        return;
+    }
 
     try {
         await addDoc(collection(db, "transactions"), {
             uid: currentUser.uid,
-            title, amount, type,
+            title: title,
+            amount: amount,
+            type: type,
             date: Timestamp.fromDate(new Date(dateStr))
         });
-        
-        // 成功後關閉視窗並清空
-        window.closeModal(); // 呼叫 HTML 裡的函式
         inpTitle.value = '';
         inpAmount.value = '';
     } catch (e) {
-        alert("錯誤: " + e.message);
+        alert("記帳錯誤: " + e.message);
     }
 });
 
-// 切換月份
-filterMonth.addEventListener('change', (e) => loadTransactions(e.target.value));
+// --- 篩選 ---
+filterMonth.addEventListener('change', (e) => {
+    loadTransactions(e.target.value);
+});
 
-// 讀取資料
+// --- 讀取 ---
 function loadTransactions(monthStr) {
     if (!currentUser) return;
     
@@ -112,56 +118,44 @@ function loadTransactions(monthStr) {
         txnList.innerHTML = "";
         let total = 0;
 
-        if(snapshot.empty) {
-            txnList.innerHTML = '<li style="text-align:center; color:#ccc; padding:20px;">本月尚無紀錄</li>';
-            totalBalanceEl.innerText = "$0";
+        if (snapshot.empty) {
+            txnList.innerHTML = "<li>本月尚無資料</li>";
+            totalBalanceEl.innerText = "結餘: $0";
             return;
         }
 
         snapshot.forEach((doc) => {
             const data = doc.data();
-            const dateObj = data.date.toDate();
-            // 格式化日期： 12/05
-            const dateDisplay = `${dateObj.getMonth()+1}/${dateObj.getDate()}`;
+            const date = data.date.toDate().toLocaleDateString();
             
             if (data.type === 'income') total += data.amount;
             else total -= data.amount;
 
             const li = document.createElement('li');
             li.className = 'txn-item';
-            
-            const isIncome = data.type === 'income';
-            const amountClass = isIncome ? 'income' : 'expense';
-            const sign = isIncome ? '+' : '-';
+            const colorClass = data.type === 'income' ? 'income' : 'expense';
+            const sign = data.type === 'income' ? '+' : '-';
 
             li.innerHTML = `
-                <div class="txn-info">
+                <div>
+                    <span style="color:#888; font-size:0.8em;">${date}</span><br>
                     <strong>${data.title}</strong>
-                    <span>${dateDisplay}</span>
                 </div>
-                <div style="display:flex; align-items:center;">
-                    <div class="txn-amount ${amountClass}">
-                        ${sign}$${data.amount}
-                    </div>
-                    <button class="delete-btn" onclick="window.deleteItem('${doc.id}')">✕</button>
+                <div class="${colorClass}">
+                    ${sign}$${data.amount}
+                    <button class="delete-btn" onclick="window.deleteItem('${doc.id}')">x</button>
                 </div>
             `;
             txnList.appendChild(li);
         });
 
-        totalBalanceEl.innerText = `$${total}`;
-        totalBalanceEl.style.color = total >= 0 ? '#000' : '#ff3b30'; // 負數變紅
+        totalBalanceEl.innerText = `結餘: $${total}`;
     });
 }
 
-// 刪除
+// --- 刪除 ---
 window.deleteItem = async (docId) => {
-    if (confirm("刪除這筆紀錄？")) {
+    if (confirm("確定刪除？")) {
         await deleteDoc(doc(db, "transactions", docId));
     }
 };
-
-// 註冊 Service Worker
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js');
-}
