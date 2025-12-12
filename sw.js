@@ -1,9 +1,10 @@
-const CACHE_NAME = 'pocket-ledger-v99'; // 版本號改大一點，強迫更新
+const CACHE_NAME = 'pocket-ledger-v1'; 
+
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  // './icon.png' // 有圖再開
+  // './icon.png' // 如果您有圖檔再解開註解
 ];
 
 self.addEventListener('install', (event) => {
@@ -26,7 +27,7 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  // 不快取 Firebase 相關請求，確保資料最新
+  // 不快取 Firebase 相關請求，確保資料庫讀取正常
   if (url.hostname.includes('firebase') || 
       url.hostname.includes('googleapis')) {
     return;
