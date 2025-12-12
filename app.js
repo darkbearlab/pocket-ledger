@@ -1,10 +1,9 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } 
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, query, where, orderBy, onSnapshot, deleteDoc, doc, Timestamp } 
+import { getFirestore, collection, addDoc, updateDoc, query, where, orderBy, onSnapshot, deleteDoc, doc, Timestamp } 
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// ⚠️ 請換成您的 Config
 const firebaseConfig = {
   apiKey: "AIzaSyAGtak9bLhVXR7oJDKr3R1ZM6OdL6JyI8A",
   authDomain: "my-pocket-ledger.firebaseapp.com",
@@ -20,83 +19,116 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
-// UI 變數
-const loginArea = document.getElementById('login-area');
-const appArea = document.getElementById('app-area');
-const userInfo = document.getElementById('user-info');
-const inpType = document.getElementById('inp-type');
-const inpDate = document.getElementById('inp-date');
-const inpTitle = document.getElementById('inp-title');
-const inpAmount = document.getElementById('inp-amount');
-const txnList = document.getElementById('txn-list');
-const totalBalanceEl = document.getElementById('total-balance');
-const filterMonth = document.getElementById('filter-month');
+// 安全選取元件
+function getEl(id) {
+    const el = document.getElementById(id);
+    return el;
+}
+
+// 綁定 DOM
+const loginArea = getEl('login-area');
+const appContainer = getEl('app-container');
+const headerTitle = getEl('header-title');
+const totalBalanceEl = getEl('total-balance');
+const txnList = getEl('txn-list');
+const filterMonth = getEl('filter-month');
+const modalOverlay = getEl('modal-overlay');
+const modalTitle = getEl('modal-title');
+const btnSaveTxn = getEl('btn-save-txn');
+
+const inpType = getEl('inp-type');
+const inpDate = getEl('inp-date');
+const inpTitle = getEl('inp-title');
+const inpAmount = getEl('inp-amount');
 
 let currentUser = null;
 let unsubscribeList = null;
+let editingDocId = null; 
 
-// 初始化日期
 const today = new Date();
-inpDate.valueAsDate = today;
-filterMonth.value = today.toISOString().slice(0, 7);
+if(filterMonth) filterMonth.value = today.toISOString().slice(0, 7);
 
-// --- 登入/登出 ---
-document.getElementById('btn-login').addEventListener('click', () => {
-    signInWithPopup(auth, provider).catch(err => alert("登入錯誤: " + err.message));
-});
+// 登入登出
+getEl('btn-login')?.addEventListener('click', () => signInWithPopup(auth, provider).catch(e => alert(e.message)));
+getEl('btn-logout')?.addEventListener('click', () => signOut(auth));
 
-document.getElementById('btn-logout').addEventListener('click', () => {
-    signOut(auth).then(() => alert("已登出"));
-});
-
-// --- 監聽狀態 ---
 onAuthStateChanged(auth, (user) => {
     currentUser = user;
     if (user) {
-        loginArea.style.display = 'none';
-        appArea.style.display = 'block';
-        userInfo.innerText = `帳戶: ${user.email}`;
+        if(loginArea) loginArea.style.display = 'none';
+        if(appContainer) appContainer.style.display = 'flex';
+        if(headerTitle) headerTitle.innerText = user.email.split('@')[0];
         loadTransactions(filterMonth.value);
     } else {
-        loginArea.style.display = 'block';
-        appArea.style.display = 'none';
+        if(loginArea) loginArea.style.display = 'flex';
+        if(appContainer) appContainer.style.display = 'none';
         if (unsubscribeList) unsubscribeList();
     }
 });
 
-// --- 新增 ---
-document.getElementById('btn-add').addEventListener('click', async () => {
-    const title = inpTitle.value;
+// Modal 操作
+function openModal(mode = 'create', data = null) {
+    if (!modalOverlay) return;
+    modalOverlay.style.display = 'flex';
+    
+    if (mode === 'edit' && data) {
+        editingDocId = data.id;
+        modalTitle.innerText = "編輯帳目";
+        btnSaveTxn.innerText = "更新";
+        inpType.value = data.type;
+        inpTitle.value = data.title;
+        inpAmount.value = data.amount;
+        const dateObj = data.date.toDate();
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        inpDate.value = `${y}-${m}-${d}`;
+    } else {
+        editingDocId = null;
+        modalTitle.innerText = "記一筆";
+        btnSaveTxn.innerText = "儲存";
+        inpTitle.value = '';
+        inpAmount.value = '';
+        inpDate.valueAsDate = new Date(); 
+    }
+}
+
+getEl('btn-open-modal')?.addEventListener('click', () => openModal('create'));
+getEl('btn-close-modal')?.addEventListener('click', () => modalOverlay.style.display = 'none');
+
+modalOverlay?.addEventListener('click', (e) => {
+    if (e.target === modalOverlay) modalOverlay.style.display = 'none';
+});
+
+// 儲存邏輯
+btnSaveTxn?.addEventListener('click', async () => {
+    const title = inpTitle.value.trim();
     const amount = parseFloat(inpAmount.value);
     const dateStr = inpDate.value;
     const type = inpType.value;
 
-    if (!title || !amount || !dateStr) {
-        alert("請填寫完整資料！");
-        return;
-    }
+    if (!title || !amount || !dateStr) return alert("請填寫完整資料");
+
+    const txnData = {
+        uid: currentUser.uid,
+        title, amount, type,
+        date: Timestamp.fromDate(new Date(dateStr))
+    };
 
     try {
-        await addDoc(collection(db, "transactions"), {
-            uid: currentUser.uid,
-            title: title,
-            amount: amount,
-            type: type,
-            date: Timestamp.fromDate(new Date(dateStr))
-        });
-        inpTitle.value = '';
-        inpAmount.value = '';
+        if (editingDocId) {
+            await updateDoc(doc(db, "transactions", editingDocId), txnData);
+        } else {
+            await addDoc(collection(db, "transactions"), txnData);
+        }
+        modalOverlay.style.display = 'none';
     } catch (e) {
-        alert("記帳錯誤: " + e.message);
+        alert("儲存失敗: " + e.message);
     }
 });
 
-// --- 篩選 ---
-filterMonth.addEventListener('change', (e) => {
-    loadTransactions(e.target.value);
-});
+filterMonth?.addEventListener('change', (e) => loadTransactions(e.target.value));
 
-// --- 讀取 ---
 function loadTransactions(monthStr) {
     if (!currentUser) return;
     
@@ -119,43 +151,53 @@ function loadTransactions(monthStr) {
         let total = 0;
 
         if (snapshot.empty) {
-            txnList.innerHTML = "<li>本月尚無資料</li>";
-            totalBalanceEl.innerText = "結餘: $0";
+            txnList.innerHTML = '<li style="text-align:center; color:#ccc; padding:20px;">本月尚無紀錄</li>';
+            totalBalanceEl.innerText = "$0";
             return;
         }
 
-        snapshot.forEach((doc) => {
-            const data = doc.data();
-            const date = data.date.toDate().toLocaleDateString();
+        snapshot.forEach((docSnapshot) => {
+            const data = docSnapshot.data();
+            const docId = docSnapshot.id;
             
             if (data.type === 'income') total += data.amount;
             else total -= data.amount;
 
+            const dateObj = data.date.toDate();
+            const dateDisplay = `${dateObj.getMonth()+1}/${dateObj.getDate()}`;
+            const isIncome = data.type === 'income';
+            const sign = isIncome ? '+' : '-';
+            const amountClass = isIncome ? 'income' : 'expense';
+
             const li = document.createElement('li');
             li.className = 'txn-item';
-            const colorClass = data.type === 'income' ? 'income' : 'expense';
-            const sign = data.type === 'income' ? '+' : '-';
+            
+            li.onclick = () => {
+                openModal('edit', { id: docId, ...data });
+            };
 
             li.innerHTML = `
-                <div>
-                    <span style="color:#888; font-size:0.8em;">${date}</span><br>
-                    <strong>${data.title}</strong>
+                <div class="txn-content">
+                    <div class="txn-info">
+                        <strong style="font-size:16px; display:block; margin-bottom:4px;">${data.title}</strong>
+                        <span style="font-size:12px; color:#888;">${dateDisplay}</span>
+                    </div>
+                    <div class="txn-amount ${amountClass}">
+                        ${sign}$${data.amount}
+                    </div>
                 </div>
-                <div class="${colorClass}">
-                    ${sign}$${data.amount}
-                    <button class="delete-btn" onclick="window.deleteItem('${doc.id}')">x</button>
-                </div>
+                <button class="delete-btn" onclick="event.stopPropagation(); window.deleteItem('${docId}')">✕</button>
             `;
             txnList.appendChild(li);
         });
 
-        totalBalanceEl.innerText = `結餘: $${total}`;
+        totalBalanceEl.innerText = `$${total}`;
+        totalBalanceEl.style.color = total >= 0 ? '#000' : '#FF3B30';
     });
 }
 
-// --- 刪除 ---
 window.deleteItem = async (docId) => {
-    if (confirm("確定刪除？")) {
+    if (confirm("確定要刪除這筆紀錄嗎？")) {
         await deleteDoc(doc(db, "transactions", docId));
     }
 };
