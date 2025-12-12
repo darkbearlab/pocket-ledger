@@ -2,67 +2,201 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的雲端記帳本 (穩定版)</title>
-    <link rel="manifest" href="manifest.json">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>雲端記帳本</title>
+    
+    <link rel="manifest" href="./manifest.json">
+    <link rel="apple-touch-icon" href="./icon.png"> <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="theme-color" content="#FFFFFF">
+
     <style>
-        body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
-        .card { border: 1px solid #ccc; padding: 15px; border-radius: 8px; margin-bottom: 15px; background: #f9f9f9; }
-        input, select, button { padding: 8px; margin: 5px 0; width: 100%; box-sizing: border-box; }
-        button { cursor: pointer; background-color: #4CAF50; color: white; border: none; font-size: 16px;}
-        button.delete-btn { background-color: #ff4444; width: auto; padding: 5px 10px; margin-left: 10px;}
-        .txn-item { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 10px 0; }
-        .income { color: green; font-weight: bold; }
-        .expense { color: red; font-weight: bold; }
-        #total-balance { font-size: 1.5em; text-align: center; margin: 20px 0; }
+        /* --- 樣式設定 (極簡現代風) --- */
+        :root { 
+            --primary: #007AFF; 
+            --bg: #F2F2F7; 
+            --card-bg: #FFFFFF; 
+            --text-main: #000; 
+            --text-sub: #8E8E93; 
+            --income: #34C759; 
+            --expense: #FF3B30; 
+        }
         
-        /* 簡單的登入區塊樣式 */
-        #login-area { text-align: center; margin-top: 50px; }
-        #app-area { display: none; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background: var(--bg); 
+            color: var(--text-main); 
+            margin: 0; 
+            height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+            overflow: hidden; 
+        }
+        
+        /* 登入與主畫面切換 */
+        #login-area { position: absolute; top:0; left:0; width:100%; height:100%; background:var(--bg); z-index:1000; display:flex; justify-content:center; align-items:center; }
+        #app-container { display:none; flex-direction:column; height:100%; }
+        
+        /* 元件樣式 */
+        .login-card { background:white; padding:40px; border-radius:20px; box-shadow:0 10px 30px rgba(0,0,0,0.1); text-align:center; width:80%; max-width:300px; }
+        
+        header { 
+            background:var(--card-bg); 
+            padding:15px 20px; 
+            padding-top: max(20px, env(safe-area-inset-top)); 
+            display:flex; justify-content:space-between; align-items:center; 
+            box-shadow:0 1px 0 rgba(0,0,0,0.05); 
+        }
+        h1 { margin:0; font-size:18px; font-weight: 600; }
+        .logout-btn { border:none; background:none; color:var(--primary); font-size:14px; cursor: pointer;}
+        
+        /* 內容捲動區 */
+        #scroll-area { 
+            flex:1; 
+            overflow-y:auto; 
+            padding:20px; 
+            padding-bottom: 120px; /* 留給置底按鈕空間 */
+        }
+        
+        .balance-card { background:var(--card-bg); border-radius:16px; padding:25px; text-align:center; margin-bottom:25px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
+        .balance-amount { font-size:40px; font-weight:700; margin-top:5px; }
+        
+        .filter-section { display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; }
+        
+        input[type="month"] { 
+            border: none; 
+            background: rgba(118, 118, 128, 0.12);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 16px; 
+            color: var(--primary); 
+            font-weight: 600; 
+            font-family: inherit;
+            min-width: 140px; 
+            text-align: center;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+
+        .txn-list { list-style:none; padding:0; margin:0; }
+        .txn-item { 
+            background:var(--card-bg); padding:15px; margin-bottom:10px; border-radius:12px; 
+            display:flex; align-items:center; cursor:pointer; transition:0.2s; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        }
+        .txn-item:active { background:#e5e5e5; transform:scale(0.98); }
+        
+        .txn-content { flex:1; display:flex; justify-content:space-between; align-items:center; margin-right:15px; }
+        .txn-info strong { display:block; font-size:16px; margin-bottom:4px; }
+        .txn-info span { font-size:12px; color:var(--text-sub); }
+        
+        .txn-amount { font-size:18px; font-weight:600; white-space: nowrap; }
+        .income { color:var(--income); } 
+        .expense { color:var(--text-main); }
+        
+        .delete-btn { 
+            background:#ff3b301a; color:var(--expense); border:none; 
+            width:32px; height:32px; border-radius:50%; 
+            display:flex; justify-content:center; align-items:center; 
+            font-size:14px; cursor: pointer; flex-shrink: 0;
+        }
+        
+        /* 置底長條按鈕 */
+        .btn-bottom-bar {
+            position: fixed; bottom: 30px; left: 20px; right: 20px;
+            height: 56px; background-color: var(--primary); color: white;
+            border: none; border-radius: 28px; font-size: 18px; font-weight: 600;
+            box-shadow: 0 8px 20px rgba(0,122,255,0.3);
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer; z-index: 100;
+            margin-bottom: env(safe-area-inset-bottom, 0);
+            transition: transform 0.1s;
+        }
+        .btn-bottom-bar:active { transform: scale(0.98); }
+        
+        /* 彈出視窗 */
+        #modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:200; align-items:flex-end; backdrop-filter:blur(3px); }
+        .modal-card { 
+            background:var(--card-bg); width:100%; border-radius:24px 24px 0 0; 
+            padding:25px; padding-bottom: max(30px, env(safe-area-inset-bottom)); 
+            animation:slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); 
+        }
+        @keyframes slideUp { from { transform:translateY(100%); } to { transform:translateY(0); } }
+        
+        .form-row { margin-bottom: 15px; }
+        input, select { width:100%; padding:14px; border-radius:12px; border:1px solid #eee; background:#f9f9f9; font-size:16px; box-sizing:border-box; outline:none; appearance: none; }
+        .btn-group { display:flex; gap:12px; margin-top:25px; }
+        .btn { flex:1; padding:15px; border-radius:12px; border:none; font-size:16px; font-weight:600; cursor: pointer;}
+        .btn-primary { background:var(--primary); color:white; }
+        .btn-cancel { background:#F2F2F7; color:#000; }
     </style>
 </head>
 <body>
-    <h2 style="text-align: center;">💰 個人記帳本</h2>
-    
+
     <div id="login-area">
-        <p>請先登入以存取資料</p>
-        <button id="btn-login" style="padding: 15px;">Google 登入</button>
+        <div class="login-card">
+            <h2>☁️ 雲端記帳本</h2>
+            <button id="btn-login" class="btn btn-primary" style="width:100%">Google 登入</button>
+        </div>
     </div>
 
-    <div id="app-area">
-        <p id="user-info" style="text-align: center; color: #666;"></p>
-        
-        <div id="total-balance">結餘: $0</div>
+    <div id="app-container">
+        <header>
+            <h1 id="header-title">My Ledger</h1>
+            <button id="btn-logout" class="logout-btn">登出</button>
+        </header>
 
-        <div class="card">
-            <h3>📝 新增一筆</h3>
-            <select id="inp-type">
-                <option value="expense">💸 支出 (出帳)</option>
-                <option value="income">💰 收入 (入帳)</option>
-            </select>
-            <input type="date" id="inp-date">
-            <input type="text" id="inp-title" placeholder="項目 (例如: 午餐)">
-            <input type="number" id="inp-amount" placeholder="金額">
-            <button id="btn-add">記帳</button>
-        </div>
+        <div id="scroll-area">
+            <div class="balance-card">
+                <div style="color:#888; font-size:14px; margin-bottom:5px">本月結餘</div>
+                <div class="balance-amount" id="total-balance">$0</div>
+            </div>
 
-        <div class="card">
-            <h3>📅 帳務明細</h3>
-            <input type="month" id="filter-month">
-            <ul id="txn-list" style="list-style: none; padding: 0;">
-                <li>載入中...</li>
+            <div class="filter-section">
+                <h3 style="margin:0; color:#888; font-size: 16px;">近期紀錄</h3>
+                <input type="month" id="filter-month">
+            </div>
+
+            <ul id="txn-list" style="list-style:none; padding:0;">
+                <li style="text-align:center; color:#ccc; margin-top:20px;">載入中...</li>
             </ul>
         </div>
 
-        <button id="btn-logout" style="background-color: #666; margin-top: 20px;">登出</button>
+        <button class="btn-bottom-bar" id="btn-open-modal">
+            ＋ 新增紀錄
+        </button>
+    </div>
+
+    <div id="modal-overlay">
+        <div class="modal-card">
+            <h2 id="modal-title" style="margin:0 0 20px 0; font-size: 20px;">記一筆</h2>
+            
+            <div class="form-row">
+                <select id="inp-type">
+                    <option value="expense">💸 支出</option>
+                    <option value="income">💰 收入</option>
+                </select>
+            </div>
+            
+            <div class="form-row"><input type="date" id="inp-date"></div>
+            <div class="form-row"><input type="text" id="inp-title" placeholder="項目名稱 (如: 午餐)"></div>
+            <div class="form-row"><input type="number" id="inp-amount" placeholder="金額"></div>
+
+            <div class="btn-group">
+                <button class="btn btn-cancel" id="btn-close-modal">取消</button>
+                <button class="btn btn-primary" id="btn-save-txn">儲存</button>
+            </div>
+        </div>
     </div>
 
     <script>
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js');
+        navigator.serviceWorker.register('./sw.js')
+          .then(() => console.log('SW Registered'))
+          .catch(err => console.error('SW Failed', err));
       }
     </script>
-    
+
     <script type="module" src="./app.js"></script>
 </body>
 </html>
